@@ -1,3 +1,530 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I | O</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        /* Base Styles (sin cambios significativos, ya los tienes bien) */
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+        html, body {
+            margin: 0; padding: 0; height: 100%; overflow: hidden; position: relative; background-color: black;
+            font-family: 'Space Mono', monospace; color: white;
+        }
+        canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; z-index: 0;
+        }
+        #app-container {
+            position: relative; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; z-index: 1;
+            /* Adjust padding to make space for fixed elements, will be overridden for mobile */
+            padding-top: 7rem; padding-bottom: 5rem; padding-left: 300px; padding-right: 300px; box-sizing: border-box;
+        }
+
+        /* --- Global UI Containers (Responsivo) --- */
+        .header-container, .footer-container {
+            position: fixed; left: 50%; transform: translateX(-50%);
+            width: auto; min-width: 300px; text-align: center; padding: 1rem 1.5rem;
+            background-color: transparent; box-shadow: none; z-index: 10;
+            transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            box-sizing: border-box;
+        }
+        .header-container { top: 0; }
+        .footer-container { bottom: 0; }
+        .header-container.hidden { transform: translateX(-50%) translateY(-150%); opacity: 0; pointer-events: none; }
+        .footer-container.hidden { transform: translateX(-50%) translateY(150%); opacity: 0; pointer-events: none; }
+        .left-sidebar-container, .right-sidebar-container {
+            position: fixed; top: 7rem; height: calc(100% - 7rem - 5rem); width: 300px;
+            background-color: rgba(0, 0, 0, 0.8); z-index: 9; display: flex; flex-direction: column; padding: 0.75rem;
+            box-sizing: border-box; transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+        }
+        .left-sidebar-container { left: 0; border-right: 1px solid white; border-top-right-radius: 0.75rem; border-bottom-right-radius: 0.75rem; }
+        .right-sidebar-container { right: 0; border-left: 1px solid white; border-top-left-radius: 0.75rem; border-bottom-left-radius: 0.75rem; }
+        .left-sidebar-container.hidden { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+        .right-sidebar-container.hidden { transform: translateX(100%); opacity: 0; pointer-events: none; }
+        .page.hidden { opacity: 0; pointer-events: none; display: none; }
+
+        /* Mobile Specific Styles (media query para pantallas chicas) */
+        @media (max-width: 768px) {
+            /* Full-screen UI containers (no padding) */
+            #app-container {
+                padding-left: 0;
+                padding-right: 0;
+            }
+
+            /* Show UI elements from the top for better accessibility */
+            .header-container, .footer-container {
+                position: fixed;
+                left: 0;
+                transform: none;
+                width: 100%;
+                min-width: unset;
+                padding: 1rem;
+            }
+
+            /* Sidebars go full width and occupy half screen height from top/bottom */
+            .left-sidebar-container, .right-sidebar-container {
+                top: unset;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                width: 100%;
+                height: 50vh; /* Half of viewport height */
+                padding: 1rem;
+                border-left: none;
+                border-right: none;
+                border-top: 1px solid white;
+                border-radius: 0;
+                transform: translateY(100%); /* Start hidden from the bottom */
+                transition: transform 0.3s ease-in-out;
+            }
+            .left-sidebar-container.active, .right-sidebar-container.active {
+                transform: translateY(0); /* Slide up to be visible */
+            }
+
+            /* We need a button to toggle the menus */
+            #sidebarToggleLeft, #sidebarToggleRight {
+                display: block; /* Show the button on mobile */
+                position: fixed;
+                z-index: 20;
+                top: 1rem;
+                width: 40px;
+                height: 40px;
+                font-size: 1.5rem;
+                background-color: rgba(255, 255, 255, 0.2);
+                border: 1px solid white;
+                border-radius: 8px;
+            }
+            #sidebarToggleLeft { left: 1rem; }
+            #sidebarToggleRight { right: 1rem; }
+            .right-sidebar-container.hidden, .left-sidebar-container.hidden {
+                opacity: 1; /* Keep opacity at 1 for slide effect */
+                pointer-events: auto; /* Allow clicks to open the menu */
+            }
+
+            /* Adjustments for specific elements */
+            .profile-page-content {
+                margin-top: 5rem; /* Space from the top header */
+                padding: 1rem;
+            }
+            #audioDebugInfo {
+                right: 1rem;
+                top: 5rem;
+                padding: 0.25rem;
+                font-size: 0.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualCanvas"></canvas>
+
+    <div id="app-container">
+        <div id="mainVisualizerPage" class="page active">
+            <button id="sidebarToggleLeft" class="btn hidden">
+                <i class="fas fa-sliders-h"></i>
+            </button>
+            <button id="sidebarToggleRight" class="btn hidden">
+                <i class="fas fa-filter"></i>
+            </button>
+
+            <div class="header-container" id="headerContainerMain">
+                <h1>I | O</h1>
+                <p class="description">"signal in, chaos out"</p>
+                <p class="description-sub">música experimental + visuales</p>
+                <div class="social-buttons">
+                    <a href="https://www.tiktok.com/@juca.noiz" target="_blank" class="social-btn"><i class="fab fa-tiktok"></i></a>
+                    <a href="https://www.instagram.com/jucanoiz/" target="_blank" class="social-btn"><i class="fab fa-instagram"></i></a>
+                    <a href="https://www.facebook.com/juca.noiz.2025" target="_blank" class="social-btn"><i class="fab fa-facebook-f"></i></a>
+                </div>
+            </div>
+
+            <div class="left-sidebar-container hidden" id="leftSidebarContainer">
+                <div class="main-controls-scrollable">
+                    <div class="control-group-box">
+                        <h3>modo visual</h3>
+                        <div class="control-group">
+                            <label for="visualMode">seleccionar modo:</label>
+                            <select id="visualMode" class="btn mappable-control" data-midi-target="visualMode">
+                                <option value="spheres">esferas pulsantes</option>
+                                <option value="particles">partículas reactivas</option>
+                                <option value="waves">ondas de color</option>
+                                <option value="cubes">cubos giratorios</option>
+                                <option value="audioBars">barras de audio</option>
+                                <option value="torus">toroides múltiples</option>
+                                <option value="torusKnot">nudo toroide</option>
+                                <option value="dodecahedron">dodecaedros múltiples</option>
+                                <option value="icosahedron">icosaedros múltiples</option>
+                                <option value="octahedron">octaedros múltiples</option>
+                                <option value="cone">conos múltiples</option>
+                                <option value="cylinder">cilindros múltiples</option>
+                                <option value="ring">anillos múltiples</option>
+                                <option value="tetrahedron">tetraedros múltiples</option>
+                                <option value="multiTorus">multi-toroides</option>
+                                <option value="gyroscope1">giroscopio de anillos</option>
+                                <option value="gyroscope2">giroscopio de esferas anidadas</option>
+                                <option value="gyroscope3">giroscopio de toroides intersectados</option>
+                                <option value="fractalNoise">ruido fractal</option>
+                                <option value="hydraFuego">hydra fuego cósmico</option>
+                                <option value="hydraGlitch">hydra glitch dimension</option>
+                                <option value="hydraTunel">hydra túnel espacial</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="control-group-box">
+                        <h3>controles de visualización</h3>
+                        <div class="control-group">
+                            <label for="colorSpeed">vel. color:</label>
+                            <input type="range" id="colorSpeed" min="0.01" max="0.5" step="0.01" value="0.1" class="mappable-control" data-midi-target="colorSpeed">
+                        </div>
+                        <div class="control-group">
+                            <label for="amplitudeSensitivity">sens. audio general:</label>
+                            <input type="range" id="amplitudeSensitivity" min="0.1" max="5.0" step="0.1" value="1.0" class="mappable-control" data-midi-target="amplitudeSensitivity">
+                        </div>
+                        <div class="control-group">
+                            <label for="audioReactionThreshold">umbral audio (db):</label>
+                            <input type="range" id="audioReactionThreshold" min="0" max="255" step="1" value="45" class="mappable-control" data-midi-target="audioReactionThreshold">
+                        </div>
+                        <div class="control-group">
+                            <label for="bassSensitivity">sens. graves:</label>
+                            <input type="range" id="bassSensitivity" min="0.1" max="5.0" step="0.1" value="1.0" class="mappable-control" data-midi-target="bassSensitivity">
+                        </div>
+                        <div class="control-group">
+                            <label for="midSensitivity">sens. medios:</label>
+                            <input type="range" id="midSensitivity" min="0.1" max="5.0" step="0.1" value="1.0" class="mappable-control" data-midi-target="midSensitivity">
+                        </div>
+                        <div class="control-group">
+                            <label for="trebleSensitivity">sens. agudos:</label>
+                            <input type="range" id="trebleSensitivity" min="0.1" max="5.0" step="0.1" value="1.0" class="mappable-control" data-midi-target="trebleSensitivity">
+                        </div>
+                        <div class="control-group">
+                            <label for="layerOpacity">opacidad capa:</label>
+                            <input type="range" id="layerOpacity" min="0.1" max="1.0" step="0.05" value="1.0" class="mappable-control" data-midi-target="layerOpacity">
+                        </div>
+                        <div class="control-group">
+                            <label for="shapeScale">escala global:</label>
+                            <input type="range" id="shapeScale" min="0.1" max="2.0" step="0.05" value="1.0" class="mappable-control" data-midi-target="shapeScale">
+                        </div>
+                        <div class="control-group">
+                            <label for="deformationLevel">nivel deformación:</label>
+                            <input type="range" id="deformationLevel" min="0.0" max="1.0" step="0.01" value="0.5" class="mappable-control" data-midi-target="deformationLevel">
+                        </div>
+                        <div class="control-group">
+                            <label for="materialMode">modo material:</label>
+                            <input type="range" id="materialMode" min="0" max="2" step="1" value="0" class="mappable-control" data-midi-target="materialMode">
+                        </div>
+                    </div>
+
+                    <div class="control-group-box">
+                        <h3>opciones de color y más</h3>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="grayscaleToggle" class="mappable-control" data-midi-target="grayscaleToggle">
+                            <label for="grayscaleToggle">escala de grises figuras</label>
+                        </div>
+                        <div class="color-palette">
+                            <label>colores custom:</label>
+                            <div class="color-input-group">
+                                <input type="color" id="color1" value="#FF0000" class="mappable-control" data-midi-target="color1">
+                                <input type="color" id="color2" value="#00FF00" class="mappable-control" data-midi-target="color2">
+                                <input type="color" id="color3" value="#0000FF" class="mappable-control" data-midi-target="color3">
+                            </div>
+                            <div class="color-input-group">
+                                <input type="color" id="color4" value="#FFFF00" class="mappable-control" data-midi-target="color4">
+                                <input type="color" id="color5" value="#FF00FF" class="mappable-control" data-midi-target="color5">
+                                <input type="color" id="color6" value="#00FFFF" class="mappable-control" data-midi-target="color6">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="control-group-box">
+                        <h3>dispositivos de entrada</h3>
+                        <div class="control-group">
+                            <label for="audioInputSelect">entrada de audio:</label>
+                            <select id="audioInputSelect" class="btn mappable-control" data-midi-target="audioInputSelect"></select>
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraSelect">seleccionar cámara:</label>
+                            <select id="cameraSelect" class="btn mappable-control" data-midi-target="cameraSelect"></select>
+                        </div>
+                    </div>
+
+                    <div class="control-group-box actions-box">
+                        <h3>acciones</h3>
+                        <button id="toggleAudio" class="btn mappable-control" data-midi-target="toggleAudio">activar audio</button>
+                        <div class="file-input-wrapper">
+                            <button class="btn">cargar imagen</button>
+                            <input type="file" id="imageUpload" accept="image/*" multiple>
+                        </div>
+                        <button id="clearImageBtn" class="btn mappable-control" data-midi-target="clearImageBtn">borrar imagen de fondo</button>
+                        <button id="fullscreenBtn" class="btn mappable-control" data-midi-target="fullscreenBtn">pantalla completa</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="right-sidebar-container hidden" id="rightSidebarContainer">
+                <div class="main-controls-scrollable">
+                    <div class="control-group-box">
+                        <h3>filtros de imagen de fondo</h3>
+                        <div class="color-input-group">
+                            <label for="chromaKeyColor">color chroma key:</label>
+                            <input type="color" id="chromaKeyColor" value="#00FF00" class="mappable-control" data-midi-target="chromaKeyColor">
+                        </div>
+                        <div class="control-group">
+                            <label for="chromaKeyThreshold">umbral chroma key:</label>
+                            <input type="range" id="chromaKeyThreshold" min="0.0" max="0.5" step="0.01" value="0.001" class="mappable-control" data-midi-target="chromaKeyThreshold">
+                        </div>
+                        <div class="control-group">
+                            <label for="backgroundScaleSlider">escala de fondo:</label>
+                            <input type="range" id="backgroundScaleSlider" min="0.5" max="5.0" step="0.1" value="1.5" class="mappable-control" data-midi-target="backgroundScaleFactor">
+                        </div>
+                        <div class="control-group">
+                            <label for="hueRotateSlider">rotación de tono:</label>
+                            <input type="range" id="hueRotateSlider" min="0" max="360" step="1" value="0" class="mappable-control" data-midi-target="hueRotate">
+                        </div>
+                        <div class="control-group">
+                            <label for="saturationSlider">saturación:</label>
+                            <input type="range" id="saturationSlider" min="0" max="200" step="1" value="100" class="mappable-control" data-midi-target="saturation">
+                        </div>
+                        <div class="control-group">
+                            <label for="vignetteSlider">viñeta:</label>
+                            <input type="range" id="vignetteSlider" min="0" max="100" step="1" value="0" class="mappable-control" data-midi-target="vignette">
+                        </div>
+                        <div class="control-group">
+                            <label for="posterizeSlider">posterizar:</label>
+                            <input type="range" id="posterizeSlider" min="2" max="255" step="1" value="255" class="mappable-control" data-midi-target="posterize">
+                        </div>
+                        <div class="control-group">
+                            <label for="sharpenSlider">nitidez:</label>
+                            <input type="range" id="sharpenSlider" min="0" max="10" step="0.1" value="0" class="mappable-control" data-midi-target="sharpen">
+                        </div>
+                        <div class="control-group">
+                            <label for="scanlineSlider">líneas de escaneo:</label>
+                            <input type="range" id="scanlineSlider" min="0" max="100" step="1" value="0" class="mappable-control" data-midi-target="scanline">
+                        </div>
+                    </div>
+
+                    <div class="control-group-box">
+                        <h3>controles de cámara</h3>
+                        <button id="startCameraBtn" class="btn mappable-control" data-midi-target="startCameraBtn">activar cámara</button>
+                        <button id="stopCameraBtn" class="btn mappable-control" data-midi-target="stopCameraBtn">detener cámara</button>
+                        <div class="control-group">
+                            <label for="cameraFilterModeSelect">filtro base:</label>
+                            <select id="cameraFilterModeSelect" class="btn mappable-control" data-midi-target="cameraFilterModeSelect">
+                                <option value="0">ninguno</option>
+                                <option value="1">escala de grises</option>
+                                <option value="2">invertir colores</option>
+                                <option value="3">sepia</option>
+                                <option value="4">pixelado</option>
+                                <option value="5">desenfoque</option>
+                                <option value="6">solo bordes</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraNoiseSlider">ruido bordes:</label>
+                            <input type="range" id="cameraNoiseSlider" min="0" max="100" value="0" class="mappable-control" data-midi-target="cameraNoiseAmount">
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraEdgeSensitivitySlider">sensibilidad bordes:</label>
+                            <input type="range" id="cameraEdgeSensitivitySlider" min="0" max="100" value="50" class="mappable-control" data-midi-target="cameraEdgeSensitivity">
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraBrightnessSlider">brillo:</label>
+                            <input type="range" id="cameraBrightnessSlider" min="-100" max="100" value="0" class="mappable-control" data-midi-target="cameraBrightness">
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraContrastSlider">contraste:</label>
+                            <input type="range" id="cameraContrastSlider" min="0" max="100" value="50" class="mappable-control" data-midi-target="cameraContrast">
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraPixelateSizeSlider">tamaño pixel:</label>
+                            <input type="range" id="cameraPixelateSizeSlider" min="1" max="50" value="1" class="mappable-control" data-midi-target="cameraPixelateSize">
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraBlurAmountSlider">intensidad desenfoque:</label>
+                            <input type="range" id="cameraBlurAmountSlider" min="0" max="10" value="0" class="mappable-control" data-midi-target="cameraBlurAmount">
+                        </div>
+                        <div class="control-group">
+                            <label for="cameraMaterialSelect">tinte bordes:</label>
+                            <select id="cameraMaterialSelect" class="btn mappable-control" data-midi-target="cameraMaterialColor">
+                                <option value="none">normal</option>
+                                <option value="mercury">mercurio</option>
+                                <option value="gold">oro</option>
+                                <option value="lava">lava</option>
+                                <option value="water">agua</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="control-group-box">
+                        <h3>control midi</h3>
+                        <div class="midi-control-group">
+                            <label for="midiInputSelect">entrada midi:</label>
+                            <select id="midiInputSelect"></select>
+                        </div>
+                        <div class="midi-control-group">
+                            <label for="midiOutputSelect">salida midi (futuro):</label>
+                            <select id="midiOutputSelect"></select>
+                        </div>
+                        <div class="control-group">
+                            <label for="midiChannelInput">canal midi (1-16):</label>
+                            <input type="number" id="midiChannelInput" min="1" max="16" value="1">
+                        </div>
+                        <h3>modo de aprendizaje midi</h3>
+                        <div class="midi-control-group">
+                            <button id="startMidiLearnBtn" class="btn">iniciar aprendizaje midi</button>
+                            <button id="stopMidiLearnBtn" class="btn" style="display: none;">detener aprendizaje midi</button>
+                        </div>
+                        <p id="midiLearnStatus" class="midi-learn-status">haz clic en un control visual para mapearlo.</p>
+                        <h3>mapeos actuales</h3>
+                        <button id="clearMidiMappingsBtn" class="btn">borrar todos los mapeos</button>
+                        <table class="midi-mappings-table">
+                            <thead>
+                                <tr>
+                                    <th>tipo midi</th>
+                                    <th>canal</th>
+                                    <th>número</th>
+                                    <th>control visual</th>
+                                    <th>acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="midiMappingsTableBody"></tbody>
+                        </table>
+                        <h3>monitor midi</h3>
+                        <div id="midiMonitor" class="midi-monitor"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-container" id="footerContainer">
+                <p class="footer-text">creado por juca noiz | aural flux®</p>
+                <div class="profile-buttons">
+                    <button id="jucaProfileBtn" class="profile-btn">JuCa Noiz</button>
+                    <button id="maroProfileBtn" class="profile-btn">Maro Valdivia</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="jucaPage" class="page hidden">
+            <div class="header-container">
+                <h1>I | O</h1>
+                <p class="description">JuCa Noiz</p>
+                <p class="description-sub">ingeniero y diseñador de experiencias</p>
+            </div>
+            <div class="profile-page-content">
+                <h2>perfil de JuCa Noiz</h2>
+                <h3>biografía</h3>
+                <p>JuCa Noiz es un ingeniero y diseñador de experiencias, especializado en la creación de paisajes sonoros y la integración de audio con visuales interactivos. su enfoque se centra en cómo el sonido puede moldear y ser moldeado por entornos visuales, explorando la sinestesia digital.</p>
+                <p>con una profunda comprensión de la acústica y el procesamiento de señales, JuCa aporta una perspectiva técnica y artística a proyectos que buscan fusionar la música experimental con la interactividad visual, creando atmósferas envolventes y multisensoriales.</p>
+                <h3>proyectos destacados</h3>
+                <ul>
+                    <li>I | O Web: una plataforma interactiva para la generación de visuales en tiempo real, donde el sonido y los controles MIDI dan vida a experiencias inmersivas.</li>
+                    <li>Participación como sintetista en Tech-Noch: explorando la fusión de la cultura digital con las raíces sonoras más profundas, ¡creando un desmadre sonoro y visual que te vuela la cabeza!</li>
+                    <li>"Resonance Chambers": una serie de experimentos sonoros que utilizan la resonancia de espacios físicos para generar visuales reactivos.</li>
+                    <li>"Glitch Garden": un entorno interactivo donde los sonidos de la naturaleza son procesados y visualizados como fallas digitales.</li>
+                    <li>"Sonic Sculptures": colaboraciones con escultores para crear piezas que emiten y reaccionan a estímulos sonoros.</li>
+                </ul>
+                <h3>filosofía artística</h3>
+                <p>JuCa cree que el sonido es una fuerza fundamental en la experiencia humana, capaz de evocar emociones y transformar la percepción. su trabajo busca amplificar esta fuerza, utilizando la tecnología para revelar la belleza oculta en el ruido y la armonía, creando diálogos entre lo audible y lo visible.</p>
+            </div>
+            <div class="back-btn-container">
+                <button class="back-btn" data-target-page="mainVisualizerPage">volver</button>
+            </div>
+        </div>
+
+        <div id="maroPage" class="page hidden">
+            <div class="header-container">
+                <h1>I | O</h1>
+                <p class="description">Maro Valdivia</p>
+                <p class="description-sub">artista audiovisual</p>
+            </div>
+            <div class="profile-page-content">
+                <h2>perfil de Maro Valdivia</h2>
+                <h3>biografía</h3>
+                <p>originario de Ciudad de México, Omar Valdivia es un artista multidisciplinario que fusiona elementos tradicionales y contemporáneos para crear experiencias sonoras y visuales únicas. su obra trasciende los límites convencionales, combinando diversos géneros y estilos para ofrecer composiciones innovadoras y cautivadoras. su habilidad para integrar diferentes disciplinas lo convierte en un creador de experiencias únicas, reflejando su profunda comprensión del arte como un medio en constante evolución.</p>
+                <h3>Tech-Noch</h3>
+                <p>Tech-Noch es un proyecto que explora la cultura y la tecnología a través de herramientas como el videomapping, la música y la creación digital, para generar experiencias visuales y auditivas inmersivas. Tech-Noch sirve como un puente entre el pasado y el futuro, ofreciendo una experiencia que vincula a las personas con sus raíces culturales, al tiempo que exploran las infinitas posibilidades de la tecnología.</p>
+                <h3>apariciones destacadas</h3>
+                <ul>
+                    <li>Cryptofest, Tulúm, Q. Roo: videomapping con video proyecciones de colaboradores de Arteknov, sobre hongo de palma y lasers proyectados en lago. colaboración con Tulaaart, Arteknov.</li>
+                    <li>Festival Prisma, Mérida, Yucatán: participación con video proyecciones como apoyo para la carrera de diseño y nuevos medios en el Gran Museo del Mundo Maya. colaboración con Universidad Anáhuac Mayab, Tulaaart.</li>
+                    <li>Festival Naltik, Zacatlán, Puebla: colección de templos y pirámides proyectados con laser en las nubes sobrepuesto a la ciudad de Zacatlán de las Manzanas. videomapping al templo del "Señor del Cable" de la serie "Bandalismo Espiritual". colaboración con Transductor, Black3Labs.</li>
+                    <li>Panteon MX, CDMX, MX: videomapping para inauguración de exposición del STP Crew. colaboración con Transductor, N30, STP Crew, Maldita Carmen, Meme.ZP.3KTRA, Fabs, Alibe, Nomoneynohoney.</li>
+                    <li>Nektar, CDMX, MX y Toluca, Edo. Mex.: pre-lanzamiento de bebida Purple Haze de la marca Nektar, fiesta para influencers y artistas. colaboración con Sinestechnia, NEUG, WTS, Noise Diva.</li>
+                    <li>Festival Data Uotan, CDMX, MX: participación con videomapping interactivo colaboración de obra de Ricardo Santos "Cocodrilos" para Festival Data Uotan patrocinado por la Embajada de Paises Bajos en México. colaboración con Ricardo Santos, NEUG, Uncloud, Alejandra Metztli.</li>
+                    <li>"Abundance", CDMX, MX: participación para RE:INTEGRA. modelo: Michelle Favreau, artista de pintura: Bella Schauer, fotógrafo: Summer Hokulani, proyección: Tech-Noch.</li>
+                </ul>
+                <h3>contacto</h3>
+                <p>web: <a href="https://www.omargarciavaldivia.com" target="_blank" style="color: white; text-decoration: underline;">www.omargarciavaldivia.com</a></p>
+                <p>instagram: <a href="https://www.instagram.com/omar_valdivia" target="_blank" style="color: white; text-decoration: underline;">@omar_valdivia</a> / <a href="https://www.instagram.com/tech_noch" target="_blank" style="color: white; text-decoration: underline;">@tech_noch</a></p>
+                <p>email: <a href="mailto:OMAR.G.VALDIVIA@GMAIL.COM" style="color: white; text-decoration: underline;">omar.g.valdivia@gmail.com</a></p>
+            </div>
+            <div class="back-btn-container">
+                <button class="back-btn" data-target-page="mainVisualizerPage">volver</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="audioDebugInfo">
+        amplitud audio: <span id="currentAmplitude">0</span><br>
+        nivel reacción: <span id="normalizedReaction">0.00</span><br>
+        graves: <span id="bassAmplitude">0</span><br>
+        medios: <span id="midAmplitude">0</span><br>
+        agudos: <span id="trebleAmplitude">0</span>
+    </div>
+
+    <div id="messageBox" class="message-box">
+        <p id="messageText"></p>
+        <button id="messageBoxOk">ok</button>
+    </div>
+
+    <script type="module">
+        // ... (Tu código original de JS aquí) ...
+        const sidebarToggleLeft = document.getElementById('sidebarToggleLeft');
+        const sidebarToggleRight = document.getElementById('sidebarToggleRight');
+        const leftSidebarContainer = document.getElementById('leftSidebarContainer');
+        const rightSidebarContainer = document.getElementById('rightSidebarContainer');
+
+        // Toggle mobile sidebars
+        function toggleSidebar(sidebar) {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.toggle('hidden');
+                sidebar.classList.toggle('active');
+            }
+        }
+
+        // Add event listeners for the new mobile buttons
+        sidebarToggleLeft.addEventListener('click', () => {
+            toggleSidebar(leftSidebarContainer);
+        });
+
+        sidebarToggleRight.addEventListener('click', () => {
+            toggleSidebar(rightSidebarContainer);
+        });
+        
+        // This function needs to be updated to show/hide mobile buttons
+        function onWindowResize() {
+            // ... (Tu código original de onWindowResize) ...
+            const isMobile = window.innerWidth <= 768;
+            sidebarToggleLeft.style.display = isMobile ? 'block' : 'none';
+            sidebarToggleRight.style.display = isMobile ? 'block' : 'none';
+            
+            // Hide sidebars on resize to mobile
+            if (isMobile) {
+                leftSidebarContainer.classList.add('hidden');
+                leftSidebarContainer.classList.remove('active');
+                rightSidebarContainer.classList.add('hidden');
+                rightSidebarContainer.classList.remove('active');
+            }
+        }
+
+        // Call onWindowResize when the page loads
+        window.onload = function() {
+            // ... (Tu código original de window.onload) ...
+            onWindowResize(); // Adjust UI for initial screen size
+        };
+    </script>
+</body>
+</html>
